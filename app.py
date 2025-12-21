@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import json
+import re
 from predict import (
     predict_attrition_risk,
     get_employee_by_id,
@@ -18,6 +19,7 @@ from predict import (
     parse_daily_log_for_chart,
     parse_history_for_chart
 )
+from chatbot import HRChatbot
 
 # =============================================================================
 # PAGE CONFIGURATION
@@ -324,7 +326,14 @@ def format_risk_badge(risk_level):
 if 'df' not in st.session_state:
     st.session_state.df = load_data()
 
+if 'chatbot' not in st.session_state:
+    st.session_state.chatbot = HRChatbot(st.session_state.df)
+
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+
 df = st.session_state.df
+chatbot = st.session_state.chatbot
 
 # =============================================================================
 # SIDEBAR NAVIGATION - Dark Corporate Style
@@ -340,11 +349,120 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 page = st.sidebar.radio(
     "Navigation",
-    ["🏠 Dashboard", "👤 Employee Profile", "📈 Department Analysis"],
+    ["🏠 Dashboard", "🔍 Search", "👤 Employee Profile", "📈 Department Analysis"],
     label_visibility="collapsed"
 )
 
-st.sidebar.markdown("<br><br>", unsafe_allow_html=True)
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+
+# Chatbot Section
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 💬 AI Assistant")
+st.sidebar.markdown("Ask questions about employees, departments, or risk analysis")
+
+# Chat input with form to prevent rerun on every keystroke
+with st.sidebar.form("chat_form", clear_on_submit=True):
+    user_query = st.text_input(
+        "Ask me anything...",
+        key="chat_input",
+        placeholder="e.g., What's their risk? What should I do?"
+    )
+    submitted = st.form_submit_button("Ask")
+
+if submitted and user_query:
+    # Build UI context based on current page
+    ui_context = {'view_type': 'dashboard'}  # Default
+    
+    # Determine view type and add relevant context
+    if page == "👤 Employee Profile":
+        ui_context['view_type'] = 'employee_profile'
+        # Get selected employee info from session state
+        if 'current_employee_id' in st.session_state:
+            ui_context['employee_id'] = st.session_state.current_employee_id
+            ui_context['employee_name'] = st.session_state.current_employee_name
+        elif 'employee_selector' in st.session_state:
+            selected_display = st.session_state.employee_selector
+            if selected_display:
+                # Extract employee ID from display format "Name (ID)"
+                match = re.search(r'\(([^)]+)\)', selected_display)
+                if match:
+                    ui_context['employee_id'] = match.group(1)
+                    ui_context['employee_name'] = selected_display.split(' (')[0]
+    elif page == "📈 Department Analysis":
+        ui_context['view_type'] = 'department_analysis'
+        if 'dept_selector' in st.session_state:
+            ui_context['selected_department'] = st.session_state.dept_selector
+    elif page == "🔍 Search":
+        ui_context['view_type'] = 'search'
+    
+    # Process query with context
+    response = chatbot.process_query(user_query, ui_context)
+    st.session_state.chat_history.append({'user': user_query, 'bot': response})
+    
+    # Display response
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Response:**")
+    if response['type'] == 'employee_detail':
+        st.sidebar.markdown(response['content'])
+        if 'employee_id' in response:
+            if st.sidebar.button("View Profile", key=f"view_{response['employee_id']}"):
+                st.session_state.selected_employee_id = response['employee_id']
+                st.session_state.selected_employee_name = response['data'].get('employee_name', '')
+                st.rerun()
+    elif response['type'] == 'employee_list':
+        st.sidebar.markdown(response['content'])
+    else:
+        st.sidebar.markdown(response['content'])
+    
+    # Show suggestions if available
+    if 'suggestions' in response and response['suggestions']:
+        st.sidebar.markdown("**Try asking:**")
+        for suggestion in response['suggestions'][:3]:
+            st.sidebar.markdown(f"• `{suggestion}`")
+
+# Show recent chat history (last 3)
+if st.session_state.chat_history:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Recent")
+    for chat in st.session_state.chat_history[-3:]:
+        st.sidebar.markdown(f"**Q:** {chat['user'][:30]}...")
+        st.sidebar.markdown(f"**A:** {chat['bot']['content'][:50]}...")
+        st.sidebar.markdown("---")
+
+# Quick search with autocomplete
+st.sidebar.markdown("### 🔍 Quick Search")
+search_term_sidebar = st.sidebar.text_input(
+    "Search employees...",
+    key="quick_search",
+    placeholder="Name or ID"
+)
+
+if search_term_sidebar:
+    # Show autocomplete suggestions
+    suggestions = chatbot.get_autocomplete_suggestions(search_term_sidebar, limit=3)
+    if suggestions:
+        st.sidebar.caption("**Suggestions:**")
+        for sugg in suggestions:
+            st.sidebar.caption(f"• {sugg}")
+    
+    # Auto-search as user types (with debouncing via form)
+    with st.sidebar.form("search_form", clear_on_submit=False):
+        search_submitted = st.form_submit_button("Search", use_container_width=True)
+        
+        if search_submitted or len(search_term_sidebar) >= 3:
+            results = chatbot.search_employees(search_term_sidebar, limit=5, min_score=40)
+            if results:
+                st.sidebar.markdown("**Results:**")
+                for result in results:
+                    risk_color = RISK_COLORS.get(result['risk_level'], PRIMARY_BLUE)
+                    st.sidebar.markdown(
+                        f"• **{result['name']}** ({result['id']})\n"
+                        f"  {result['department']} - {result['risk_score']:.1f}%"
+                    )
+            else:
+                st.sidebar.info("No employees found")
+
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
 st.sidebar.markdown("""
     <div style='text-align: left; color: #CCCCCC; font-size: 0.75rem; padding: 1rem; border-top: 1px solid rgba(255,255,255,0.1);'>
         <p style='margin: 0; color: #FFFFFF; font-weight: 500;'>Attrition Risk System</p>
@@ -508,18 +626,39 @@ if page == "🏠 Dashboard":
     
     st.markdown("---")
     
-    # High-risk employees table
+    # High-risk employees table with advanced filtering
     st.markdown("### High-Risk Employee Alert")
     
-    risk_filter = st.selectbox(
-        "Filter by Risk Level",
-        ["All", "Moderate", "High", "Critical"],
-        key="risk_filter"
-    )
+    col_filter1, col_filter2, col_filter3 = st.columns(3)
+    
+    with col_filter1:
+        risk_filter = st.selectbox(
+            "Filter by Risk Level",
+            ["All", "Moderate", "High", "Critical"],
+            key="risk_filter"
+        )
+    
+    with col_filter2:
+        dept_filter = st.selectbox(
+            "Filter by Department",
+            ["All"] + sorted(df['Department'].unique().tolist()),
+            key="dept_filter"
+        )
+    
+    with col_filter3:
+        sort_by = st.selectbox(
+            "Sort by",
+            ["Risk Score (High to Low)", "Risk Score (Low to High)", "Name (A-Z)", "Department"],
+            key="sort_filter"
+        )
     
     try:
         min_level = risk_filter.lower() if risk_filter != "All" else "Moderate"
         high_risk = get_high_risk_employees(df, min_level=min_level)
+        
+        # Apply department filter
+        if dept_filter != "All":
+            high_risk = [emp for emp in high_risk if emp.get('department') == dept_filter]
         
         if high_risk:
             display_data = []
@@ -529,26 +668,181 @@ if page == "🏠 Dashboard":
                 driver_pct = top_driver['influence_pct'] if top_driver else 0
                 
                 display_data.append({
-                    'Employee ID': emp.get('employee_id', 'N/A'),
                     'Name': emp.get('employee_name', 'N/A'),
+                    'Employee ID': emp.get('employee_id', 'N/A'),
                     'Department': emp.get('department', 'N/A'),
-                    'Risk Score': f"{emp.get('risk_score', 0):.1f}%",
+                    'Risk Score': emp.get('risk_score', 0),
                     'Risk Level': emp.get('risk_level', 'N/A'),
                     'Trend': emp.get('risk_trend_icon', ''),
                     'Top Risk Driver': f"{driver_name} ({driver_pct}%)" if top_driver else "N/A"
                 })
             
             display_df = pd.DataFrame(display_data)
+            
+            # Apply sorting
+            if sort_by == "Risk Score (High to Low)":
+                display_df = display_df.sort_values('Risk Score', ascending=False)
+            elif sort_by == "Risk Score (Low to High)":
+                display_df = display_df.sort_values('Risk Score', ascending=True)
+            elif sort_by == "Name (A-Z)":
+                display_df = display_df.sort_values('Name', ascending=True)
+            elif sort_by == "Department":
+                display_df = display_df.sort_values('Department', ascending=True)
+            
+            # Format Risk Score for display
+            display_df['Risk Score'] = display_df['Risk Score'].apply(lambda x: f"{x:.1f}%")
+            
             st.dataframe(
                 display_df,
                 use_container_width=True,
                 hide_index=True,
                 height=400
             )
+            
+            st.caption(f"Showing {len(display_df)} employee(s)")
         else:
-            st.info("✅ No employees found matching the selected risk level.")
+            st.info("✅ No employees found matching the selected filters.")
     except Exception as e:
         st.error(f"Error loading high-risk employees: {str(e)}")
+
+# =============================================================================
+# SEARCH PAGE
+# =============================================================================
+elif page == "🔍 Search":
+    st.markdown('<div class="main-header">Employee Search</div>', unsafe_allow_html=True)
+    
+    # Search interface
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        search_query = st.text_input(
+            "Search employees by name or ID",
+            key="main_search",
+            placeholder="e.g., John Smith, EMP001, or Engineering",
+            help="Search by employee name, ID, or department. Supports fuzzy matching for typos."
+        )
+    
+    with col2:
+        search_limit = st.selectbox(
+            "Results",
+            [10, 20, 50, 100],
+            index=0,
+            key="search_limit"
+        )
+    
+    # Filters
+    st.markdown("### Filters")
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    
+    with filter_col1:
+        filter_dept = st.selectbox(
+            "Department",
+            ["All"] + sorted(df['Department'].unique().tolist()),
+            key="search_dept_filter"
+        )
+    
+    with filter_col2:
+        filter_risk = st.selectbox(
+            "Risk Level",
+            ["All", "Low", "Moderate", "High", "Critical"],
+            key="search_risk_filter"
+        )
+    
+    with filter_col3:
+        sort_option = st.selectbox(
+            "Sort by",
+            ["Relevance", "Name (A-Z)", "Risk Score (High)", "Risk Score (Low)", "Department"],
+            key="search_sort"
+        )
+    
+    # Perform search
+    if search_query:
+        results = chatbot.search_employees(search_query, limit=search_limit, min_score=40)
+        
+        # Apply filters
+        if filter_dept != "All":
+            results = [r for r in results if r['department'] == filter_dept]
+        
+        if filter_risk != "All":
+            results = [r for r in results if r['risk_level'] == filter_risk]
+        
+        # Apply sorting
+        if sort_option == "Name (A-Z)":
+            results.sort(key=lambda x: x['name'])
+        elif sort_option == "Risk Score (High)":
+            results.sort(key=lambda x: x['risk_score'], reverse=True)
+        elif sort_option == "Risk Score (Low)":
+            results.sort(key=lambda x: x['risk_score'])
+        elif sort_option == "Department":
+            results.sort(key=lambda x: x['department'])
+        # Relevance is already sorted by match_score
+        
+        if results:
+            st.markdown(f"### Found {len(results)} result(s)")
+            
+            # Display results in cards
+            for i, result in enumerate(results):
+                risk_color = RISK_COLORS.get(result['risk_level'], PRIMARY_BLUE)
+                
+                with st.expander(
+                    f"**{result['name']}** ({result['id']}) - {result['department']} - "
+                    f"Risk: {result['risk_score']:.1f}% ({result['risk_level']})",
+                    expanded=False
+                ):
+                    col_info, col_action = st.columns([3, 1])
+                    
+                    with col_info:
+                        st.markdown(f"**Employee ID:** {result['id']}")
+                        st.markdown(f"**Department:** {result['department']}")
+                        st.markdown(f"**Risk Score:** {result['risk_score']:.1f}%")
+                        st.markdown(f"**Risk Level:** {result['risk_level']}")
+                        if 'match_score' in result:
+                            st.caption(f"Match score: {result['match_score']:.0f}%")
+                    
+                    with col_action:
+                        target_display = f"{result['name']} ({result['id']})"
+                        if st.button("View Profile", key=f"view_search_{result['id']}"):
+                            # Store selected employee for profile page
+                            st.session_state.selected_employee_id = result['id']
+                            st.session_state.selected_employee_name = result['name']
+                            st.info(f"Switching to profile for {result['name']}...")
+                            # Note: User will need to manually navigate to Employee Profile page
+                            # The employee will be auto-selected there
+        else:
+            st.info("No employees found matching your search criteria.")
+            
+            # Show suggestions
+            suggestions = chatbot.get_autocomplete_suggestions(search_query, limit=5)
+            if suggestions:
+                st.markdown("**Did you mean:**")
+                for sugg in suggestions:
+                    st.markdown(f"• {sugg}")
+    else:
+        st.info("👆 Enter a search term above to find employees.")
+        st.markdown("""
+        **Search Tips:**
+        - Search by **name** (e.g., "John Smith" or just "John")
+        - Search by **employee ID** (e.g., "EMP001" or "001")
+        - Search by **department** (e.g., "Engineering")
+        - Fuzzy matching handles typos automatically
+        - Use filters to narrow down results
+        """)
+        
+        # Show popular searches
+        st.markdown("### Popular Searches")
+        popular_cols = st.columns(4)
+        popular_queries = [
+            "High risk employees",
+            "Engineering department",
+            "Critical risk",
+            "Sales team"
+        ]
+        
+        for i, query in enumerate(popular_queries):
+            with popular_cols[i]:
+                if st.button(query, key=f"popular_{i}", use_container_width=True):
+                    st.session_state.main_search = query
+                    st.rerun()
 
 # =============================================================================
 # EMPLOYEE PROFILE PAGE
@@ -556,14 +850,37 @@ if page == "🏠 Dashboard":
 elif page == "👤 Employee Profile":
     st.markdown('<div class="main-header">Employee Risk Profile</div>', unsafe_allow_html=True)
     
-    # Employee selector
-    employee_ids = df['Employee_ID'].tolist()
-    selected_id = st.selectbox(
+    # Employee selector - Show names with IDs
+    employee_options = []
+    employee_id_map = {}
+    for _, row in df.iterrows():
+        display_name = f"{row['Name']} ({row['Employee_ID']})"
+        employee_options.append(display_name)
+        employee_id_map[display_name] = row['Employee_ID']
+    
+    # Auto-select if coming from search page
+    default_index = 0
+    if 'selected_employee_id' in st.session_state:
+        target_display = f"{st.session_state.selected_employee_name} ({st.session_state.selected_employee_id})"
+        if target_display in employee_options:
+            default_index = employee_options.index(target_display)
+        # Clear the selection after using it
+        del st.session_state.selected_employee_id
+        del st.session_state.selected_employee_name
+    
+    selected_display = st.selectbox(
         "Select Employee",
-        employee_ids,
+        employee_options,
+        index=default_index,
         key="employee_selector",
         help="Choose an employee to view their detailed risk profile"
     )
+    selected_id = employee_id_map[selected_display] if selected_display else None
+    
+    # Store current employee context for chatbot
+    if selected_id:
+        st.session_state.current_employee_id = selected_id
+        st.session_state.current_employee_name = selected_display.split(' (')[0]
     
     if selected_id:
         try:
@@ -991,8 +1308,8 @@ elif page == "📈 Department Analysis":
                         driver_name = top_driver['name'] if top_driver else "N/A"
                         
                         dept_risk_list.append({
-                            'Employee ID': pred.get('employee_id', 'N/A'),
                             'Name': pred.get('employee_name', 'N/A'),
+                            'Employee ID': pred.get('employee_id', 'N/A'),
                             'Risk Score': pred.get('risk_score', 0),
                             'Risk Level': pred.get('risk_level', 'N/A'),
                             'Top Driver': driver_name
