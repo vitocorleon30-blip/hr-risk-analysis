@@ -118,6 +118,48 @@ st.markdown("""
         display: block !important;
     }
     
+    /* Fix top ribbon visibility: ensure tabs/header are above content and not overlaid */
+    section[data-testid="stTabs"],
+    header,
+    [data-testid="stHeader"],
+    .main-header {
+        background: transparent !important;
+        z-index: 2000 !important;
+        position: relative !important;
+    }
+    
+    .stTabs [data-baseweb="tab-list"] {
+        background: transparent !important;
+        z-index: 2001 !important;
+    }
+    
+    /* Disable any pseudo-element overlays that may hide the ribbon */
+    section[data-testid="stTabs"]::before,
+    section[data-testid="stTabs"]::after,
+    .top-logo-container::before,
+    .top-logo-container::after {
+        display: none !important;
+        content: none !important;
+    }
+    
+    /* Reduce top gap above the ribbon and remove extra black band */
+    .block-container {
+        /* keep a small padding so content doesn't touch the header but avoid large gap */
+        padding-top: 0.4rem !important;
+        margin-top: 0 !important;
+    }
+    /* Pull the tabs header upward slightly to remove residual spacing */
+    section[data-testid="stTabs"] {
+        margin-top: -0.6rem !important;
+        padding-top: 0 !important;
+        z-index: 2001 !important;
+        position: relative !important;
+    }
+    header, [data-testid="stHeader"] {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    
     /* Headers - WHITE TEXT */
     h1, h2, h3, h4, h5, h6, .main-header {
         color: #FFFFFF !important;
