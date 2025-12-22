@@ -78,16 +78,9 @@ st.markdown("""
         background-color: #0E1117 !important;
     }
     
-    /* Keep Streamlit main menu visible so top buttons are accessible; hide only footer */
-    #MainMenu {visibility: visible; position: relative !important; z-index: 4000 !important; background: transparent !important;}
+    /* Hide Streamlit branding but keep header visible for buttons */
+    #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-
-    /* Ensure Streamlit header/toolbars are above custom overlays */
-    header, [data-testid="stHeader"], [data-testid="stToolbar"] {
-        background: transparent !important;
-        position: relative !important;
-        z-index: 3500 !important;
-    }
     
     /* Logo on right side of navigation ribbon - same size as buttons */
     section[data-testid="stTabs"] {
@@ -95,7 +88,6 @@ st.markdown("""
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
-        z-index: 3000 !important;
     }
     
     .stTabs [data-baseweb="tab-list"] {
@@ -430,8 +422,8 @@ st.markdown("""
         align-items: center;
         justify-content: flex-start;
         position: sticky;
-        top: 72px; /* push tabs below the Streamlit header */
-        z-index: 3001 !important;
+        top: 0;
+        z-index: 100;
         margin-bottom: 0.5rem !important; /* Reduced bottom margin */
     }
     
@@ -455,42 +447,6 @@ st.markdown("""
         box-shadow: 0 6px 12px rgba(96,165,250,0.4);
     }
     </style>
-""", unsafe_allow_html=True)
-
-# Ensure chat input bar is reparented to the document body so it stays fixed
-st.markdown("""
-<script>
-(function(){
-    function relocateChatInput(){
-        try{
-            var el = document.querySelector('.st-key-chat_input_form');
-            if(!el) return;
-            if(el.parentElement !== document.body){
-                document.body.appendChild(el);
-            }
-            // Ensure fixed positioning and visibility
-            el.style.position = 'fixed';
-            el.style.bottom = '20px';
-            el.style.left = '0';
-            el.style.right = '0';
-            el.style.zIndex = '99999';
-            el.style.pointerEvents = 'auto';
-
-            var inner = el.querySelector('div');
-            if(inner){
-                inner.style.margin = '0 auto';
-                inner.style.width = '70%';
-                inner.style.maxWidth = '800px';
-            }
-        }catch(e){ /* ignore */ }
-    }
-
-    setTimeout(relocateChatInput, 100);
-    setTimeout(relocateChatInput, 500);
-    // Re-run whenever DOM mutates (e.g., tab switches)
-    new MutationObserver(relocateChatInput).observe(document, {childList:true, subtree:true});
-})();
-</script>
 """, unsafe_allow_html=True)
 
 # =============================================================================
