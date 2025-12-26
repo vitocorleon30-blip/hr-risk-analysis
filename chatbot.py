@@ -335,7 +335,7 @@ class HRChatbot:
             elif 'risk' in query_lower:
                 return self._handle_risk_overview(query, context)
             else:
-                return self._handle_statistics(query, context)
+        return self._handle_statistics(query, context)
         
         # Default: If it's unclear, provide helpful response
         return {
@@ -636,15 +636,15 @@ class HRChatbot:
                 content = f"There are **{count} employees** ({pct:.1f}%) at critical risk (85%+). "
                 content += "These need immediate attention. Should I help you identify who they are?"
             else:
-                content = "**What the data indicates:**\n\n"
-                content += f"There are **{count} employees** ({pct:.1f}%) at critical risk (85%+ risk score).\n\n"
-                content += "**Why it matters now:**\n\n"
-                content += "Critical risk employees require immediate attention. "
-                content += "Without intervention, there's a high probability of voluntary departure.\n\n"
-                content += "**What to do next:**\n\n"
-                content += "1. **Prioritize these employees** for immediate retention conversations\n"
-                content += "2. **Review their risk drivers** to identify root causes\n"
-                content += "3. **Develop targeted retention plans** for each individual"
+            content = "**What the data indicates:**\n\n"
+            content += f"There are **{count} employees** ({pct:.1f}%) at critical risk (85%+ risk score).\n\n"
+            content += "**Why it matters now:**\n\n"
+            content += "Critical risk employees require immediate attention. "
+            content += "Without intervention, there's a high probability of voluntary departure.\n\n"
+            content += "**What to do next:**\n\n"
+            content += "1. **Prioritize these employees** for immediate retention conversations\n"
+            content += "2. **Review their risk drivers** to identify root causes\n"
+            content += "3. **Develop targeted retention plans** for each individual"
             
             return {
                 'type': 'text',
@@ -661,15 +661,15 @@ class HRChatbot:
                 content = f"**{count} employees** ({pct:.1f}%) are at high or critical risk. "
                 content += "Would you like to see the breakdown by department?"
             else:
-                content = "**What the data indicates:**\n\n"
-                content += f"There are **{count} employees** ({pct:.1f}%) at high or critical risk (60%+ risk score).\n\n"
-                content += "**Why it matters now:**\n\n"
-                content += "This represents a significant portion of the workforce requiring proactive intervention. "
-                content += "Early action can prevent further escalation.\n\n"
-                content += "**What to do next:**\n\n"
-                content += "1. **Review the high-risk employee list** to identify patterns\n"
-                content += "2. **Prioritize by department** or role criticality\n"
-                content += "3. **Develop department-level retention strategies**"
+            content = "**What the data indicates:**\n\n"
+            content += f"There are **{count} employees** ({pct:.1f}%) at high or critical risk (60%+ risk score).\n\n"
+            content += "**Why it matters now:**\n\n"
+            content += "This represents a significant portion of the workforce requiring proactive intervention. "
+            content += "Early action can prevent further escalation.\n\n"
+            content += "**What to do next:**\n\n"
+            content += "1. **Review the high-risk employee list** to identify patterns\n"
+            content += "2. **Prioritize by department** or role criticality\n"
+            content += "3. **Develop department-level retention strategies**"
             
             return {
                 'type': 'text',
@@ -683,18 +683,18 @@ class HRChatbot:
             content += f"**{summary['high_risk_count']} employees** ({summary['high_risk_count']/summary['total_employees']*100:.1f}%) are at high/critical risk. "
             content += "Want more details?"
         else:
-            content = "**What the data indicates:**\n\n"
-            content += f"Organization-wide average risk score is **{summary['avg_risk_score']:.1f}%**. "
-            content += f"{summary['high_risk_count']} employees ({summary['high_risk_count']/summary['total_employees']*100:.1f}%) "
-            content += f"are at high or critical risk.\n\n"
-            
-            content += "**Why it matters now:**\n\n"
-            content += "Understanding overall risk helps prioritize retention efforts and identify systemic issues.\n\n"
-            
-            content += "**What to do next:**\n\n"
-            content += "1. **Focus on high-risk employees** first for immediate impact\n"
-            content += "2. **Analyze department patterns** to identify organizational factors\n"
-            content += "3. **Develop targeted retention programs** based on common risk drivers"
+        content = "**What the data indicates:**\n\n"
+        content += f"Organization-wide average risk score is **{summary['avg_risk_score']:.1f}%**. "
+        content += f"{summary['high_risk_count']} employees ({summary['high_risk_count']/summary['total_employees']*100:.1f}%) "
+        content += f"are at high or critical risk.\n\n"
+        
+        content += "**Why it matters now:**\n\n"
+        content += "Understanding overall risk helps prioritize retention efforts and identify systemic issues.\n\n"
+        
+        content += "**What to do next:**\n\n"
+        content += "1. **Focus on high-risk employees** first for immediate impact\n"
+        content += "2. **Analyze department patterns** to identify organizational factors\n"
+        content += "3. **Develop targeted retention programs** based on common risk drivers"
         
         return {
             'type': 'text',
@@ -739,21 +739,21 @@ class HRChatbot:
                 else:
                     content += "Risk levels look manageable. Need more details?"
             else:
-                content = f"**What the data indicates:**\n\n"
-                content += f"The **{dept_name}** department has an average risk score of **{stats['avg_score']:.1f}%**. "
-                content += f"{high_risk_count} employees ({stats['high_risk_pct']:.1f}%) are at high or critical risk.\n\n"
-                
-                content += "**Why it matters now:**\n\n"
-                if stats['avg_score'] > 40:
-                    content += "This department shows elevated risk levels, suggesting potential systemic issues "
-                    content += "that may affect multiple employees.\n\n"
-                else:
-                    content += "While risk levels are manageable, proactive monitoring can help prevent escalation.\n\n"
-                
-                content += "**What to do next:**\n\n"
-                content += "1. **Review department-specific risk drivers** to identify common factors\n"
-                content += "2. **Engage department leadership** in retention planning\n"
-                content += "3. **Develop targeted interventions** for high-risk individuals"
+            content = f"**What the data indicates:**\n\n"
+            content += f"The **{dept_name}** department has an average risk score of **{stats['avg_score']:.1f}%**. "
+            content += f"{high_risk_count} employees ({stats['high_risk_pct']:.1f}%) are at high or critical risk.\n\n"
+            
+            content += "**Why it matters now:**\n\n"
+            if stats['avg_score'] > 40:
+                content += "This department shows elevated risk levels, suggesting potential systemic issues "
+                content += "that may affect multiple employees.\n\n"
+            else:
+                content += "While risk levels are manageable, proactive monitoring can help prevent escalation.\n\n"
+            
+            content += "**What to do next:**\n\n"
+            content += "1. **Review department-specific risk drivers** to identify common factors\n"
+            content += "2. **Engage department leadership** in retention planning\n"
+            content += "3. **Develop targeted interventions** for high-risk individuals"
             
             return {
                 'type': 'text',
@@ -770,16 +770,16 @@ class HRChatbot:
                 content = f"**{highest_dept[0]}** has the highest risk at **{stats['avg_score']:.1f}%**. "
                 content += "Should I analyze what's causing this?"
             else:
-                content = "**What the data indicates:**\n\n"
-                content += f"**{highest_dept[0]}** has the highest average risk score at **{stats['avg_score']:.1f}%**.\n\n"
-                
-                content += "**Why it matters now:**\n\n"
-                content += "This department requires focused attention to understand and address underlying risk factors.\n\n"
-                
-                content += "**What to do next:**\n\n"
-                content += "1. **Investigate department-specific factors** contributing to risk\n"
-                content += "2. **Engage with department leadership** to develop retention strategies\n"
-                content += "3. **Prioritize high-risk employees** in this department for intervention"
+            content = "**What the data indicates:**\n\n"
+            content += f"**{highest_dept[0]}** has the highest average risk score at **{stats['avg_score']:.1f}%**.\n\n"
+            
+            content += "**Why it matters now:**\n\n"
+            content += "This department requires focused attention to understand and address underlying risk factors.\n\n"
+            
+            content += "**What to do next:**\n\n"
+            content += "1. **Investigate department-specific factors** contributing to risk\n"
+            content += "2. **Engage with department leadership** to develop retention strategies\n"
+            content += "3. **Prioritize high-risk employees** in this department for intervention"
             
             return {
                 'type': 'text',
@@ -813,25 +813,25 @@ class HRChatbot:
             content += "Would you like more details about any specific area?"
         else:
             # Full response for first-time queries
-            content = "**What the data indicates:**\n\n"
-            content += f"• Total Employees: **{summary['total_employees']}**\n"
-            content += f"• High Risk Employees: **{summary['high_risk_count']}** ({summary['high_risk_count']/summary['total_employees']*100:.1f}%)\n"
-            content += f"• Critical Risk: **{summary['critical_count']}** ({summary['critical_count']/summary['total_employees']*100:.1f}%)\n"
-            content += f"• Average Risk Score: **{summary['avg_risk_score']:.1f}%**\n\n"
-            
-            content += "**Risk Distribution:**\n"
-            for level, count in summary['risk_distribution'].items():
-                pct = (count / summary['total_employees']) * 100
-                content += f"• {level}: {count} ({pct:.1f}%)\n"
-            
-            content += "\n**Why it matters now:**\n\n"
-            content += "These metrics provide an organizational overview of retention risk. "
-            content += "Focusing on high-risk employees can help prevent voluntary departures.\n\n"
-            
-            content += "**What to do next:**\n\n"
-            content += "1. **Prioritize critical and high-risk employees** for immediate attention\n"
-            content += "2. **Review department patterns** to identify systemic issues\n"
-            content += "3. **Develop retention strategies** based on common risk drivers"
+        content = "**What the data indicates:**\n\n"
+        content += f"• Total Employees: **{summary['total_employees']}**\n"
+        content += f"• High Risk Employees: **{summary['high_risk_count']}** ({summary['high_risk_count']/summary['total_employees']*100:.1f}%)\n"
+        content += f"• Critical Risk: **{summary['critical_count']}** ({summary['critical_count']/summary['total_employees']*100:.1f}%)\n"
+        content += f"• Average Risk Score: **{summary['avg_risk_score']:.1f}%**\n\n"
+        
+        content += "**Risk Distribution:**\n"
+        for level, count in summary['risk_distribution'].items():
+            pct = (count / summary['total_employees']) * 100
+            content += f"• {level}: {count} ({pct:.1f}%)\n"
+        
+        content += "\n**Why it matters now:**\n\n"
+        content += "These metrics provide an organizational overview of retention risk. "
+        content += "Focusing on high-risk employees can help prevent voluntary departures.\n\n"
+        
+        content += "**What to do next:**\n\n"
+        content += "1. **Prioritize critical and high-risk employees** for immediate attention\n"
+        content += "2. **Review department patterns** to identify systemic issues\n"
+        content += "3. **Develop retention strategies** based on common risk drivers"
         
         return {
             'type': 'text',

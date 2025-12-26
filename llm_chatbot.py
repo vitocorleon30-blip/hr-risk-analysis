@@ -14,8 +14,10 @@ from openai import OpenAI
 from predict import (
     get_risk_summary,
     get_department_summary,
-    get_high_risk_employees
+    get_high_risk_employees,
+    predict_attrition_risk
 )
+import re
 
 
 class LLMHRChatbot:
@@ -56,9 +58,7 @@ class LLMHRChatbot:
         """Load API key from config.env file."""
         try:
             config_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)),
-                "Daily news summary",
-                "production",
+                os.path.dirname(__file__),
                 "config.env"
             )
             
@@ -153,6 +153,233 @@ class LLMHRChatbot:
         except Exception as e:
             return f"Error building data context: {e}"
     
+    def _search_employee(self, search_term: str) -> Optional[Dict[str, Any]]:
+        """
+        Search for an employee by name or ID.
+        
+        Args:
+            search_term: Employee name or ID to search for
+            
+        Returns:
+            Employee prediction dictionary if found, None otherwise
+        """
+        if not search_term or not search_term.strip():
+            return None
+        
+        search_term = search_term.strip()
+        search_term_lower = search_term.lower()
+        
+        try:
+            # Try exact ID match first (case-insensitive)
+            if 'Employee_ID' in self.df.columns:
+                id_match = self.df[self.df['Employee_ID'].astype(str).str.lower() == search_term_lower]
+                if not id_match.empty:
+                    return predict_attrition_risk(id_match.iloc[0])
+            
+            # Try exact name match (case-insensitive)
+            if 'Name' in self.df.columns:
+                name_match = self.df[self.df['Name'].astype(str).str.lower() == search_term_lower]
+                if not name_match.empty:
+                    return predict_attrition_risk(name_match.iloc[0])
+            
+            # Try partial name match (case-insensitive)
+            if 'Name' in self.df.columns:
+                partial_match = self.df[self.df['Name'].astype(str).str.lower().str.contains(search_term_lower, na=False)]
+                if not partial_match.empty:
+                    # If multiple matches, return the first one
+                    return predict_attrition_risk(partial_match.iloc[0])
+            
+            # Try partial ID match (case-insensitive)
+            if 'Employee_ID' in self.df.columns:
+                partial_id_match = self.df[self.df['Employee_ID'].astype(str).str.lower().str.contains(search_term_lower, na=False)]
+                if not partial_id_match.empty:
+                    return predict_attrition_risk(partial_id_match.iloc[0])
+            
+        except Exception as e:
+            print(f"Error searching for employee: {e}")
+            return None
+        
+        return None
+    
+    def _detect_employee_query(self, query: str) -> Optional[str]:
+        """
+        Detect if query mentions a specific employee name or ID.
+        
+        Returns:
+            Search term (name or ID) if detected, None otherwise
+        """
+        if not query:
+            return None
+        
+        query_lower = query.lower()
+        
+        # Check for employee ID patterns (EMP001, EMP-001, etc.)
+        id_patterns = [
+            r'\b(EMP\d+)\b',  # EMP001, EMP123
+            r'\b(EMP-\d+)\b',  # EMP-001
+            r'\b(EMP_\d+)\b',  # EMP_001
+        ]
+        
+        for pattern in id_patterns:
+            matches = re.findall(pattern, query, re.IGNORECASE)
+            if matches:
+                return matches[0]  # Return first match
+        
+        # Try to extract employee name
+        # Common patterns: "about [Name]", "for [Name]", "[Name]'s risk", etc.
+        
+        # Skip common query words
+        skip_words = {'tell', 'me', 'about', 'what', 'are', 'the', 'for', 'of', 
+                     'show', 'give', 'provide', 'how', 'can', 'we', 'prevent',
+                     'stop', 'help', 'employee', 'risk', 'drivers', 'recommendations',
+                     'suggestions', 'advice', 'action', 'should', 'do', 'to', 'their',
+                     'his', 'her', 'from', 'leaving', 'quit', 'resign'}
+        
+        words = query.split()
+        potential_names = []
+        
+        # Try to find quoted strings first (most likely to be names)
+        quoted_pattern = r'["\']([^"\']+)["\']'
+        quoted_matches = re.findall(quoted_pattern, query)
+        for match in quoted_matches:
+            match_clean = match.strip('.,!?;:')
+            if len(match_clean) > 1 and match_clean.lower() not in skip_words:
+                potential_names.append(match_clean)
+        
+        # Extract capitalized words (potential names)
+        # Group consecutive capitalized words as potential multi-word names
+        name_parts = []
+        for i, word in enumerate(words):
+            word_clean = word.strip('.,!?;:')
+            word_lower = word_clean.lower()
+            
+            if word_lower in skip_words:
+                # If we hit a stop word, finalize current name if any
+                if name_parts:
+                    potential_name = ' '.join(name_parts)
+                    if len(potential_name) > 1:
+                        potential_names.append(potential_name)
+                    name_parts = []
+                continue
+            
+            # Check if word starts with capital (potential name part)
+            if word_clean and word_clean[0].isupper() and len(word_clean) > 1:
+                name_parts.append(word_clean)
+            else:
+                # If we hit a non-capitalized word, finalize current name if any
+                if name_parts:
+                    potential_name = ' '.join(name_parts)
+                    if len(potential_name) > 1:
+                        potential_names.append(potential_name)
+                    name_parts = []
+        
+        # Don't forget the last name if we're at the end
+        if name_parts:
+            potential_name = ' '.join(name_parts)
+            if len(potential_name) > 1:
+                potential_names.append(potential_name)
+        
+        # Try searching with potential names (longest first for more specific matches)
+        if potential_names:
+            # Sort by length (longest first) and remove duplicates while preserving order
+            seen = set()
+            unique_names = []
+            for name in sorted(potential_names, key=len, reverse=True):
+                if name not in seen:
+                    seen.add(name)
+                    unique_names.append(name)
+            
+            for name in unique_names:
+                # Try searching with this name
+                result = self._search_employee(name)
+                if result:
+                    return name
+        
+        return None
+    
+    def _format_employee_context(self, employee_pred: Dict[str, Any]) -> str:
+        """
+        Format detailed employee prediction data for LLM context.
+        
+        Includes:
+        - Basic info (name, ID, department, level, tenure)
+        - Risk assessment (score, level, trend)
+        - Top 3 risk drivers with descriptions and benchmarks
+        - Key metrics (performance, engagement trends)
+        - Qualitative data (manager notes, survey comments)
+        """
+        context_parts = [
+            "## Specific Employee Analysis Requested\n\n",
+            f"**Employee**: {employee_pred.get('employee_name', 'Unknown')} (ID: {employee_pred.get('employee_id', 'Unknown')})\n",
+            f"**Department**: {employee_pred.get('department', 'Unknown')} | **Level**: {employee_pred.get('level', 'Unknown')} | **Tenure**: {employee_pred.get('tenure_years', 0):.1f} years\n",
+            f"**Manager**: {employee_pred.get('manager_name', 'N/A')}\n\n"
+        ]
+        
+        # Risk Assessment
+        context_parts.append("### Risk Assessment\n")
+        context_parts.append(f"- **Risk Score**: {employee_pred.get('risk_score', 0):.1f}% ({employee_pred.get('risk_level', 'Unknown')})\n")
+        context_parts.append(f"- **Risk Trend**: {employee_pred.get('risk_trend', 'Unknown')} {employee_pred.get('risk_trend_icon', '')}\n\n")
+        
+        # Top Risk Drivers
+        top_drivers = employee_pred.get('top_3_drivers', [])
+        if top_drivers:
+            context_parts.append("### Top Risk Drivers\n")
+            for i, driver in enumerate(top_drivers, 1):
+                context_parts.append(f"{i}. **{driver.get('name', 'Unknown')}** ({driver.get('influence_pct', 0)}% influence)\n")
+                context_parts.append(f"   - Description: {driver.get('description', 'N/A')}\n")
+                context_parts.append(f"   - Benchmark: {driver.get('benchmark', 'N/A')}\n\n")
+        else:
+            context_parts.append("### Top Risk Drivers\n")
+            context_parts.append("No significant risk drivers detected. Employee profile appears stable.\n\n")
+        
+        # Key Metrics
+        features = employee_pred.get('features', {})
+        if features:
+            context_parts.append("### Key Metrics\n")
+            
+            # Performance metrics
+            perf_current = features.get('Performance_Current')
+            perf_trend = features.get('Performance_Trend', 0)
+            if perf_current is not None:
+                trend_str = "increasing" if perf_trend > 0 else "decreasing" if perf_trend < 0 else "stable"
+                context_parts.append(f"- **Performance**: {perf_current:.1f} (Trend: {trend_str})\n")
+            
+            # Engagement metrics
+            eng_current = features.get('Engagement_Current')
+            eng_trend = features.get('Engagement_Trend', 0)
+            if eng_current is not None:
+                trend_str = "increasing" if eng_trend > 0 else "decreasing" if eng_trend < 0 else "stable"
+                context_parts.append(f"- **Engagement**: {eng_current:.1f}/10 (Trend: {trend_str})\n")
+            
+            # Career progression
+            months_since_promotion = features.get('Months_Since_Promotion')
+            if months_since_promotion is not None:
+                context_parts.append(f"- **Months Since Promotion**: {months_since_promotion:.0f}\n")
+            
+            # Compensation gap
+            comp_gap = features.get('Compensation_Gap_Pct')
+            if comp_gap is not None:
+                context_parts.append(f"- **Compensation Gap**: {comp_gap:.1f}% vs market average\n")
+            
+            context_parts.append("\n")
+        
+        # Qualitative Feedback
+        manager_notes = employee_pred.get('manager_notes', '')
+        survey_comments = employee_pred.get('survey_comments', '')
+        
+        if manager_notes or survey_comments:
+            context_parts.append("### Qualitative Feedback\n")
+            if manager_notes:
+                context_parts.append(f"- **Manager Notes**: {manager_notes}\n")
+            if survey_comments:
+                context_parts.append(f"- **Survey Comments**: {survey_comments}\n")
+            context_parts.append("\n")
+        
+        context_parts.append("---\n\n")
+        context_parts.append("When providing recommendations for this employee, focus on addressing the top risk drivers listed above with specific, actionable steps.")
+        
+        return "".join(context_parts)
+    
     def _get_system_prompt(self) -> str:
         """Get system prompt for LLM."""
         return """You are an expert HR Analytics Assistant helping executives analyze employee attrition risk data.
@@ -163,20 +390,40 @@ Your capabilities:
 - Recommend retention strategies
 - Answer questions about specific employees or departments
 - Explain risk drivers and their implications
+- Provide personalized, actionable recommendations for preventing employee attrition
 
 Guidelines:
 - Be conversational, professional, and helpful
 - Use markdown formatting for clarity (headers, lists, bold text)
 - Provide specific numbers and percentages when available
 - Offer actionable recommendations when appropriate
-- If asked about specific employees, use the provided data context
+- If asked about specific employees, use the provided data context (especially detailed employee analysis if provided)
 - Be concise but thorough
+
+When providing recommendations for specific employees:
+- Focus on addressing the top risk drivers identified for that employee
+- Provide specific, actionable steps (not vague advice)
+- Prioritize recommendations (most important first)
+- Suggest timelines when appropriate (immediate actions vs. short-term vs. long-term)
+- Consider the employee's specific situation (department, level, tenure, etc.)
+- Reference specific risk drivers and their influence percentages
 
 You have access to real-time employee risk data that will be provided in the conversation context."""
     
     def _prepare_messages(self, query: str, conversation_history: List[Dict] = None) -> List[Dict]:
         """Prepare messages for API call."""
-        # Build data context (uses cache)
+        # Detect if query is about a specific employee
+        employee_search_term = self._detect_employee_query(query)
+        employee_context = None
+        
+        if employee_search_term:
+            # Search for the employee
+            employee_pred = self._search_employee(employee_search_term)
+            if employee_pred:
+                # Format detailed employee data
+                employee_context = self._format_employee_context(employee_pred)
+        
+        # Build general data context (uses cache)
         data_context = self._build_data_context()
         
         # Format conversation history
@@ -184,10 +431,20 @@ You have access to real-time employee risk data that will be provided in the con
             {"role": "system", "content": self._get_system_prompt()}
         ]
         
+        # Build context string - employee-specific data first if available
+        context_parts = []
+        if employee_context:
+            context_parts.append(employee_context)
+            context_parts.append("\n\n")
+        
+        context_parts.append("Current general data context:\n\n")
+        context_parts.append(data_context)
+        context_parts.append("\n\nUse this data to answer questions accurately.")
+        
         # Add data context as system message
         messages.append({
             "role": "system",
-            "content": f"Current data context:\n\n{data_context}\n\nUse this data to answer questions accurately."
+            "content": "".join(context_parts)
         })
         
         # Add conversation history (last 10 messages to manage token limits)

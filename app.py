@@ -20,7 +20,6 @@ from predict import (
     parse_daily_log_for_chart,
     parse_history_for_chart
 )
-from chatbot import HRChatbot
 from llm_chatbot import LLMHRChatbot
 
 # =============================================================================
@@ -575,15 +574,19 @@ if 'df' not in st.session_state:
 if 'chatbot' not in st.session_state:
     try:
         llm_chatbot = LLMHRChatbot(st.session_state.df)
-        st.session_state.chatbot = llm_chatbot if llm_chatbot.client else HRChatbot(st.session_state.df)
-    except:
-        st.session_state.chatbot = HRChatbot(st.session_state.df)
+        st.session_state.chatbot = llm_chatbot
+        if not llm_chatbot.client:
+            st.session_state.chatbot_available = False
+        else:
+            st.session_state.chatbot_available = True
+    except Exception as e:
+        st.session_state.chatbot = None
+        st.session_state.chatbot_available = False
 
 if 'chat_messages' not in st.session_state:
     st.session_state.chat_messages = []
 
 df = st.session_state.df
-chatbot = st.session_state.chatbot
 
 # =============================================================================
 # TOP NAVIGATION TABS
@@ -668,7 +671,7 @@ with tab1:
         summary = get_risk_summary(df)
         
         # Calculate estimated financial risk (Placeholder logic: 30k per critical, 15k per high risk)
-        estimated_financial_risk = (summary["critical_count"] * 30000) + (summary["high_risk_count"] * 15000)
+        estimated_financial_risk = (summary["critical_count"] * 40000) + (summary["high_risk_count"] * 20000)
         formatted_risk_cost = f"${estimated_financial_risk:,.0f}"
 
         # --- KPI Cards ---
@@ -1371,6 +1374,19 @@ with tab4:
                 <p style="font-size: 1.2rem; color: #94A3B8;">How can I help you analyze risk today?</p>
             </div>
         """, unsafe_allow_html=True)
+        
+        # Show placeholder message if chatbot is unavailable
+        if not st.session_state.get('chatbot_available', False):
+            st.markdown("""
+                <div style="margin-top: 20px; padding: 20px; background-color: #1E293B; border: 1px solid #FF9800; border-radius: 12px; text-align: left;">
+                    <div style="font-size: 1.1rem; color: #FF9800; font-weight: 600; margin-bottom: 10px;">⚠️ LLM Chatbot Unavailable</div>
+                    <div style="color: #CCCCCC; line-height: 1.6;">
+                        <p>To use the AI Assistant, please configure your Groq API key in <code style="background-color: #0E1117; padding: 2px 6px; border-radius: 4px;">config.env</code></p>
+                        <p style="margin-top: 10px;">Add the following line:</p>
+                        <pre style="background-color: #0E1117; padding: 12px; border-radius: 8px; margin-top: 8px; overflow-x: auto;"><code>GROQ_API_KEY=your_api_key_here</code></pre>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
     
     for msg in st.session_state.chat_messages:
         role = msg['role']
@@ -1436,25 +1452,37 @@ with tab4:
 
     # If processing, run the logic (AFTER rerun to show user message first)
     if st.session_state.get('chatbot_processing', False) and st.session_state.chat_messages[-1]['role'] == 'user':
-        last_query = st.session_state.chat_messages[-1]['content']
-        response = chatbot.process_query(last_query, {'view_type': 'chatbot'}, st.session_state.chat_messages)
-        
-        # Add response
-        msg_data = {
-            'role': 'assistant',
-            'timestamp': datetime.now().strftime("%H:%M")
-        }
-        
-        if response.get('type') == 'chart':
-            msg_data['type'] = 'chart'
-            msg_data['chart_data'] = response['chart_data']
-            msg_data['content'] = ''
+        if not st.session_state.get('chatbot_available', False) or st.session_state.chatbot is None:
+            # Chatbot not available - show error
+            st.session_state.chat_messages.append({
+                'role': 'assistant',
+                'content': '⚠️ **LLM Chatbot Unavailable**\n\nPlease configure your Groq API key to use the AI Assistant. See the configuration instructions above.',
+                'timestamp': datetime.now().strftime("%H:%M")
+            })
+            st.session_state.chatbot_processing = False
+            st.rerun()
         else:
-            msg_data['content'] = response.get('content', '')
+            # Process query normally
+            chatbot = st.session_state.chatbot
+            last_query = st.session_state.chat_messages[-1]['content']
+            response = chatbot.process_query(last_query, {'view_type': 'chatbot'}, st.session_state.chat_messages)
             
-        st.session_state.chat_messages.append(msg_data)
-        st.session_state.chatbot_processing = False
-        st.rerun()
+            # Add response
+            msg_data = {
+                'role': 'assistant',
+                'timestamp': datetime.now().strftime("%H:%M")
+            }
+            
+            if response.get('type') == 'chart':
+                msg_data['type'] = 'chart'
+                msg_data['chart_data'] = response['chart_data']
+                msg_data['content'] = ''
+            else:
+                msg_data['content'] = response.get('content', '')
+                
+            st.session_state.chat_messages.append(msg_data)
+            st.session_state.chatbot_processing = False
+            st.rerun()
 
     # 3. DYNAMIC LAYOUT JAVASCRIPT - FIXED SCROLLING
     st.markdown("""
